@@ -16,6 +16,8 @@ Z = np.array(
     ]
 )
 
+encode_diff = False
+
 
 def RMSE(I0, I1):
     assert I0.shape == I1.shape
@@ -84,7 +86,7 @@ def calc_size(non_zero_val_matrix, non_zero_pos_matrix):
     non_zero_val_bits = []
     for non_zero_val_list in non_zero_val_matrix.flatten():
         if non_zero_val_list:
-            non_zero_val_bits.append(len(non_zero_val_list) * bits(max(np.abs(np.array(non_zero_val_list)))))
+            non_zero_val_bits.append(len(non_zero_val_list) * (1 + bits(max(np.abs(np.array(non_zero_val_list))))))
 
     non_zero_pos_bits = []
     for non_zero_pos_list in non_zero_pos_matrix.flatten():
@@ -118,10 +120,28 @@ def DCT_reconstruction(val, L):
             v = val[i, j]
             assert len(np.where(np.array(l) == 1)[0]) == len(v)
             n = 0
+            top_left = True
             for k, coord in enumerate(zz_coords):
-                if l[k]:
-                    DCT[coord[1] + 8*i, coord[0] + 8*j] = v[n]
-                    n += 1
+                if encode_diff:
+                    if l[k]:
+                        value = v[n]
+                        if top_left:
+                            if i == 0 and j == 0:
+                                last_top_left_val = value
+                            else:
+                                value += last_top_left_val
+                                last_top_left_val = value
+                        DCT[coord[1] + 8*i, coord[0] + 8*j] = value
+                        n += 1
+                        top_left = False
+                    elif k == 0:
+                        value = last_top_left_val
+                        DCT[coord[1] + 8*i, coord[0] + 8*j] = value
+                        top_left = False
+                else:
+                    if l[k]:
+                        DCT[coord[1] + 8 * i, coord[0] + 8 * j] = v[n]
+                        n += 1
     return DCT
 
 
@@ -146,10 +166,27 @@ def compression(I):
             for coord in zz_coords:
                 x = coord[0]
                 y = coord[1]
-                non_zero = int(T[y, x] != 0)
-                block_non_zero_pos.append(non_zero)
-                if non_zero:
-                    block_non_zero_val.append(T[y, x])
+
+                if encode_diff:
+                    value = T[y, x]
+                    if x == y == 0:
+                        if not(i == j == 0):
+                            value -= last_top_left_val
+
+                        last_top_left_val = T[y, x]
+
+                    non_zero = int(value != 0)
+                    block_non_zero_pos.append(non_zero)
+
+                    if non_zero:
+                        block_non_zero_val.append(value)
+                else:
+                    value = T[y, x]
+                    non_zero = int(value != 0)
+                    block_non_zero_pos.append(non_zero)
+
+                    if non_zero:
+                        block_non_zero_val.append(value)
 
             line_non_zero_pos.append(plage(block_non_zero_pos))
             line_non_zero_val.append(block_non_zero_val)
