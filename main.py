@@ -1,6 +1,3 @@
-# Exactemet 15 de compression
-# 
-
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -79,19 +76,21 @@ def un_plage(L):
     return res
 
 
+def bits(i):
+    return int(np.log(i) / np.log(2)) + 1
+
+
 def calc_size(non_zero_val_matrix, non_zero_pos_matrix):
-    non_zero_val = []
     non_zero_val_bits = []
     for non_zero_val_list in non_zero_val_matrix.flatten():
-        non_zero_val += non_zero_val_list
         if non_zero_val_list:
-            non_zero_val_bits.append(int(np.log(max(np.abs(np.array(non_zero_val_list)))) / np.log(2)) + 1)
+            non_zero_val_bits.append(len(non_zero_val_list) * bits(max(np.abs(np.array(non_zero_val_list)))))
 
-    non_zero_pos = []
+    non_zero_pos_bits = []
     for non_zero_pos_list in non_zero_pos_matrix.flatten():
-        non_zero_pos += non_zero_pos_list
+        non_zero_pos_bits.append(len(non_zero_pos_list) * bits(max(np.abs(np.array(non_zero_pos_list)))))
 
-    N = len(non_zero_pos) + sum(non_zero_val_bits)
+    N = sum(non_zero_pos_bits) + sum(non_zero_val_bits)
     return N
 
 
@@ -100,24 +99,24 @@ def image_reconstruction(DCT_q):
     I = np.zeros(DCT_q.shape)
     H, W = I.shape
 
-    for i in range(int(H / 8)):
-        for j in range(int(W / 8)):
-            I[8*i:8*(i+1), 8*j:8*(j+1)] = DCT_q[8*i:8*(i+1), 8*j:8*(j+1)] * Z
-    I = cv2.dct(I, flags=cv2.DCT_INVERSE)
+    for i in range(0, H, 8):
+        for j in range(0, W, 8):
+            I[i:i + 8, j:j+8] = cv2.idct(DCT_q[i:i + 8, j:j+8] * Z)
     return I
 
 
 def DCT_reconstruction(val, L):
-    H,W = val.shape  # val et L sont de taille (H/8, W/8) avec H,W la taille de l'image de base
+    H, W = val.shape  # val et L sont de taille (H/8, W/8) avec H,W la taille de l'image de base
     H *= 8
     W *= 8
-    DCT = np.zeros((H,W))
-    zz_coords = zigzag(8,8)
+    DCT = np.zeros((H, W))
+    zz_coords = zigzag(8, 8)
 
-    for i in range(int(H / 8)):
-        for j in range(int(W / 8)):
-            l = un_plage(L[i,j])
-            v = val[i,j]
+    for i in range(int(H/8)):
+        for j in range(int(W/8)):
+            l = un_plage(L[i, j])
+            v = val[i, j]
+            assert len(np.where(np.array(l) == 1)[0]) == len(v)
             n = 0
             for k, coord in enumerate(zz_coords):
                 if l[k]:
@@ -126,37 +125,35 @@ def DCT_reconstruction(val, L):
     return DCT
 
 
-def compression(DCT):
+def compression(I):
     global Z
-
-    H, W = DCT.shape
-    T = DCT.copy()
-
-    for i in range(0, H, 8):
-        for j in range(0, W, 8):
-            T[i:i+8, j:j+8] /= Z
-
-    T = np.round(T)
+    H, W = I.shape
+    If = I.astype(np.float32)
 
     non_zero_val_matrix = []  # Matrice H/8 x W/8 contenant les listes de valeurs qtifiees non nulles
     non_zero_pos_matrix = []  # Matrice H/8 x W/8 contenant les listes de 0 et 1 indiquant les positions des valeurs non nulles
-    zz_coords = zigzag(8,8)
+    zz_coords = zigzag(8, 8)
 
     for i in range(0, H, 8):
         line_non_zero_val = []
         line_non_zero_pos = []
         for j in range(0, W, 8):
+            dct = cv2.dct(If[i:i+8, j:j+8])
+            T = np.fix(dct/Z)
+
             block_non_zero_pos = []
             block_non_zero_val = []
             for coord in zz_coords:
-                x = j + coord[0]
-                y = i + coord[1]
+                x = coord[0]
+                y = coord[1]
                 non_zero = int(T[y, x] != 0)
                 block_non_zero_pos.append(non_zero)
                 if non_zero:
                     block_non_zero_val.append(T[y, x])
+
             line_non_zero_pos.append(plage(block_non_zero_pos))
             line_non_zero_val.append(block_non_zero_val)
+
         non_zero_pos_matrix.append(line_non_zero_pos)
         non_zero_val_matrix.append(line_non_zero_val)
 
@@ -200,7 +197,7 @@ def main():
     plt.title('Autocorrelation de la DCT')
     plt.show()
 
-    I_rec = compression(DCT)
+    I_rec = compression(I)
     plt.figure(3)
     plt.subplot(1,2,1)
     plt.imshow(I, "gray")
