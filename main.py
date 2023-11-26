@@ -16,7 +16,7 @@ Z = np.array(
     ]
 )
 
-encode_diff = False
+encode_diff = True
 
 
 def RMSE(I0, I1):
@@ -123,21 +123,18 @@ def DCT_reconstruction(val, L):
             top_left = True
             for k, coord in enumerate(zz_coords):
                 if encode_diff:
+                    value = 0
                     if l[k]:
                         value = v[n]
                         if top_left:
-                            if i == 0 and j == 0:
-                                last_top_left_val = value
-                            else:
+                            if not(i == 0 and j == 0):
                                 value += last_top_left_val
-                                last_top_left_val = value
-                        DCT[coord[1] + 8*i, coord[0] + 8*j] = value
+                            last_top_left_val = value
                         n += 1
-                        top_left = False
                     elif k == 0:
                         value = last_top_left_val
-                        DCT[coord[1] + 8*i, coord[0] + 8*j] = value
-                        top_left = False
+                    DCT[coord[1] + 8*i, coord[0] + 8*j] = value
+                    top_left = False
                 else:
                     if l[k]:
                         DCT[coord[1] + 8 * i, coord[0] + 8 * j] = v[n]
@@ -166,27 +163,18 @@ def compression(I):
             for coord in zz_coords:
                 x = coord[0]
                 y = coord[1]
-
+                value = T[y, x]
                 if encode_diff:
-                    value = T[y, x]
                     if x == y == 0:
                         if not(i == j == 0):
                             value -= last_top_left_val
-
                         last_top_left_val = T[y, x]
 
-                    non_zero = int(value != 0)
-                    block_non_zero_pos.append(non_zero)
+                non_zero = int(value != 0)
+                block_non_zero_pos.append(non_zero)
 
-                    if non_zero:
-                        block_non_zero_val.append(value)
-                else:
-                    value = T[y, x]
-                    non_zero = int(value != 0)
-                    block_non_zero_pos.append(non_zero)
-
-                    if non_zero:
-                        block_non_zero_val.append(value)
+                if non_zero:
+                    block_non_zero_val.append(value)
 
             line_non_zero_pos.append(plage(block_non_zero_pos))
             line_non_zero_val.append(block_non_zero_val)
