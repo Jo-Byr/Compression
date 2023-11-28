@@ -5,15 +5,26 @@ import matplotlib.pyplot as plt
 
 Z = np.array(
     [
-        [16,11,10,16,24,40,51,61],
-        [12,12,14,19,26,58,60,55],
-        [14,13,16,24,40,57,69,56],
-        [14,17,22,29,51,87,80,62],
-        [18,22,37,56,68,109,103,77],
-        [24,35,55,64,81,104,113,92],
-        [49,64,78,87,103,121,120,101],
-        [72,92,95,98,112,100,103,99]
+        [16, 11, 10, 16, 24,  40,  51,  61],
+        [12, 12, 14, 19, 26,  58,  60,  55],
+        [14, 13, 16, 24, 40,  57,  69,  56],
+        [14, 17, 22, 29, 51,  87,  80,  62],
+        [18, 22, 37, 56, 68,  109, 103, 77],
+        [24, 35, 55, 64, 81,  104, 113, 92],
+        [49, 64, 78, 87, 103, 121, 120, 101],
+        [72, 92, 95, 98, 112, 100, 103, 99]
     ]
+)
+
+Z2 = np.array(
+    [[ 16,  12,  12,  18,  26,  40,  50,  56],
+     [ 11,  13,  19,  23,  31,  56,  61,  50],
+     [ 15,  16,  16,  26,  41,  53,  66,  59],
+     [ 17,  19,  19,  30,  46,  82,  84,  61],
+     [ 22,  24,  39,  53,  66, 109, 108,  75],
+     [ 22,  36,  53,  64,  80, 106, 112,  91],
+     [ 51,  64,  79,  87, 106, 120, 115,  97],
+     [ 75,  95,  94, 103, 115, 102, 102,  96]],
 )
 
 encode_diff = True
@@ -22,7 +33,7 @@ encode_diff = True
 def RMSE(I0, I1):
     assert I0.shape == I1.shape
     H, W = I0.shape
-    return np.sqrt(np.sum((I1 - I0)**2)) / np.sqrt(H * W)
+    return np.sqrt(np.sum((I1 - I0)**2) / (H * W))
 
 
 def zigzag(H, W):
@@ -82,20 +93,39 @@ def bits(i):
     return int(np.log(i) / np.log(2)) + 1
 
 
-def calc_size(*args):
-    tot = 0
-    for arg in args:
-        signed = False
-        blocks_bits = []
-        for block_list in arg:
-            L = np.array(block_list)
-            if np.any(L):
-                necessary_bits = bits(max(np.abs(L)))
-                blocks_bits.append(len(block_list) * necessary_bits)
-                if not signed and np.any(L < 0):
-                    signed = True
-        tot += np.sum(blocks_bits) + len(np.sum(arg)) * int(signed)
-    return tot
+def pos_encoding(L):
+    """ Prend la liste des positions non nulles [1, 1, 0, 0, 1, 0, 0, 0...], et le nombre de bits permettant
+     l'encodage le plus efficace """
+    max_bits = bits(max(L))
+    min_len_bits = None
+    min_len = None
+    for b in range(1, max_bits + 1):
+        n = 0
+        for val in L:
+            v = val
+            while v > 0:
+                n += b
+                v -= 2**b - 1
+                if v > 0:
+                    n += b
+        if min_len is None or n < min_len:
+            min_len = n
+            min_len_bits = b
+    return min_len_bits
+
+
+def calc_size(non_zero_val_matrix, non_zero_pos_matrix):
+    non_zero_val_bits = []
+    for non_zero_val_list in non_zero_val_matrix.flatten():
+        if non_zero_val_list:
+            non_zero_val_bits.append(len(non_zero_val_list) * (1 + bits(max(np.abs(np.array(non_zero_val_list))))))
+
+    non_zero_pos_bits = []
+    for non_zero_pos_list in non_zero_pos_matrix.flatten():
+        non_zero_pos_bits.append(len(non_zero_pos_list) * pos_encoding(np.abs(np.array(non_zero_pos_list))))
+
+    N = sum(non_zero_pos_bits) + sum(non_zero_val_bits)
+    return N
 
 
 def image_reconstruction(DCT_q):
@@ -184,7 +214,6 @@ def compression(I):
 
         non_zero_pos_matrix.append(line_non_zero_pos)
         non_zero_val_matrix.append(line_non_zero_val)
-
     non_zero_pos_matrix = np.array(non_zero_pos_matrix, dtype=object)
     non_zero_val_matrix = np.array(non_zero_val_matrix, dtype=object)
 
@@ -242,7 +271,7 @@ def main():
     plt.show()
 
     I_rec, taux_comp = compression(I)
-    cv2.imwrite("res2.png", I_rec)
+    #cv2.imwrite("res2.png", I_rec)
 
     print(f"RMSE : {RMSE(I, I_rec)}")
     print(f"Taux de compression : {taux_comp}")
@@ -260,6 +289,9 @@ def main():
     plt.title('Différence')
     plt.show()
 
+    cv2.imwrite("oreille.png", I[10:190, 170:300])
+    cv2.imwrite("oreille2.7.png", I_rec[10:190, 170:300])
+
 
 def test_rand():
     global Z
@@ -269,14 +301,16 @@ def test_rand():
 
     Z_i = Z
     best_Z = Z_i
+    base_RMSE = RMSE(I, I_rec)
 
     n = 5
     for i in range(100):
         r = np.fix(np.random.rand(8, 8) * 2 * (n + 1) - (n + 1))
         Z = Z_i + r
+        Z[np.where(Z <= 0)] = 1
         I_rec, taux_comp = compression(I)
         err = RMSE(I, I_rec)
-        if taux_comp > best:
+        if taux_comp > best and err < base_RMSE:
             best = taux_comp
             best_Z = Z
             print(best, err)
@@ -286,7 +320,6 @@ def test_rand():
 
 
 if __name__ == "__main__":
-    #Z = np.ones((8,8))
-    #Z = np.round(Z.astype(np.float32) * 2.0).astype(np.uint16)
+    z_fac = 1.7
+    Z = np.round(Z.astype(np.float32) * z_fac).astype(np.uint16)
     main()
-    #test_rand()
