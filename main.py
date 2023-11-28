@@ -22,7 +22,7 @@ encode_diff = True
 def RMSE(I0, I1):
     assert I0.shape == I1.shape
     H, W = I0.shape
-    return np.linalg.norm(I1 - I0) / np.sqrt(H * W)
+    return np.sqrt(np.sum((I1 - I0)**2)) / np.sqrt(H * W)
 
 
 def zigzag(H, W):
@@ -82,29 +82,32 @@ def bits(i):
     return int(np.log(i) / np.log(2)) + 1
 
 
-def calc_size(non_zero_val_matrix, non_zero_pos_matrix):
-    non_zero_val_bits = []
-    for non_zero_val_list in non_zero_val_matrix.flatten():
-        if non_zero_val_list:
-            non_zero_val_bits.append(len(non_zero_val_list) * (1 + bits(max(np.abs(np.array(non_zero_val_list))))))
-
-    non_zero_pos_bits = []
-    for non_zero_pos_list in non_zero_pos_matrix.flatten():
-        non_zero_pos_bits.append(len(non_zero_pos_list) * bits(max(np.abs(np.array(non_zero_pos_list)))))
-
-    N = sum(non_zero_pos_bits) + sum(non_zero_val_bits)
-    return N
+def calc_size(*args):
+    tot = 0
+    for arg in args:
+        signed = False
+        blocks_bits = []
+        for block_list in arg:
+            L = np.array(block_list)
+            if np.any(L):
+                necessary_bits = bits(max(np.abs(L)))
+                blocks_bits.append(len(block_list) * necessary_bits)
+                if not signed and np.any(L < 0):
+                    signed = True
+        tot += np.sum(blocks_bits) + len(np.sum(arg)) * int(signed)
+    return tot
 
 
 def image_reconstruction(DCT_q):
     """ Reconstruit une image à partir d'une DCT quantifiée """
-    I = np.zeros(DCT_q.shape)
-    H, W = I.shape
+    I_rec = np.zeros(DCT_q.shape)
+    H, W = I_rec.shape
 
     for i in range(0, H, 8):
         for j in range(0, W, 8):
-            I[i:i + 8, j:j+8] = cv2.idct(DCT_q[i:i + 8, j:j+8] * Z)
-    return I
+            I_rec[i:i + 8, j:j+8] = cv2.idct(DCT_q[i:i + 8, j:j+8] * Z)
+    I_rec = np.clip(I_rec, 0, 255).astype(np.uint8)
+    return I_rec
 
 
 def DCT_reconstruction(val, L):
@@ -185,25 +188,32 @@ def compression(I):
     non_zero_pos_matrix = np.array(non_zero_pos_matrix, dtype=object)
     non_zero_val_matrix = np.array(non_zero_val_matrix, dtype=object)
 
-    size = calc_size(non_zero_val_matrix, non_zero_pos_matrix)
-    print(f"Taux de compression : {H * W * 8 / size}")
+    size = calc_size(non_zero_val_matrix.flatten(), non_zero_pos_matrix.flatten())
+    taux_comp = H * W * 8 / size
 
     DCT_rec = DCT_reconstruction(non_zero_val_matrix, non_zero_pos_matrix)
 
-    return image_reconstruction(DCT_rec)
+    return image_reconstruction(DCT_rec), taux_comp
 
 
 def main():
     I = cv2.imread("Images/04.png", 0)
     I_autocorr = np.corrcoef(I)
 
-    plt.figure(1)
-    plt.subplot(1,2,1)
+    plt.figure()
+
+    plt.subplot(1, 3, 1)
     plt.imshow(I, 'gray')
     plt.title('Image')
-    plt.subplot(1,2,2)
+
+    plt.subplot(1, 3, 2)
     plt.imshow(I_autocorr, 'gray')
     plt.title('Autocorrelation')
+
+    plt.subplot(1, 3, 3)
+    plt.hist(I.ravel(), 256, [0, 256])
+    plt.title('Histogramme de distribution des intensités')
+
     plt.show()
 
     DCT = cv2.dct(I.astype(np.float32))
@@ -211,29 +221,72 @@ def main():
     DCT_autocorr = np.corrcoef(DCT)
 
     plt.figure(2)
-    plt.subplot(1,3,1)
+
+    plt.subplot(2, 2, 1)
     plt.imshow(DCT, 'gray')
     plt.title('DCT')
-    plt.subplot(1,3,2)
+
+    plt.subplot(2, 2, 2)
     plt.imshow(DCTlog, 'gray')
     plt.title('log(|DCT|)')
-    plt.subplot(1,3,3)
+
+    plt.subplot(2, 2, 3)
     plt.imshow(DCT_autocorr, 'gray')
     plt.title('Autocorrelation de la DCT')
+
+    plt.subplot(2, 2, 4)
+    plt.hist(DCT.ravel(), bins=500, range=[-200, 200])
+    #plt.hist(DCTlog.ravel(), bins=500)
+    plt.title('Histogramme de distribution des intensités')
+
     plt.show()
 
-    I_rec = compression(I)
-    plt.figure(3)
-    plt.subplot(1,2,1)
-    plt.imshow(I, "gray")
-    plt.title('Image originale')
-    plt.subplot(1,2,2)
-    plt.imshow(I_rec, "gray")
-    plt.title('Image reconstruite')
-    plt.show()
+    I_rec, taux_comp = compression(I)
+    cv2.imwrite("res2.png", I_rec)
 
     print(f"RMSE : {RMSE(I, I_rec)}")
+    print(f"Taux de compression : {taux_comp}")
+
+    plt.figure(3)
+    plt.subplot(1,3,1)
+    plt.imshow(I, "gray")
+    plt.title('Image originale')
+    plt.subplot(1,3,2)
+    plt.imshow(I_rec, "gray")
+    plt.title('Image reconstruite')
+    plt.subplot(1,3,3)
+    diff = np.abs(I_rec.astype(np.int16) - I.astype(np.int16))
+    plt.imshow(diff, "gray")
+    plt.title('Différence')
+    plt.show()
+
+
+def test_rand():
+    global Z
+    I = cv2.imread("Images/04.png", 0)
+    I_rec, taux_comp = compression(I)
+    best = taux_comp
+
+    Z_i = Z
+    best_Z = Z_i
+
+    n = 5
+    for i in range(100):
+        r = np.fix(np.random.rand(8, 8) * 2 * (n + 1) - (n + 1))
+        Z = Z_i + r
+        I_rec, taux_comp = compression(I)
+        err = RMSE(I, I_rec)
+        if taux_comp > best:
+            best = taux_comp
+            best_Z = Z
+            print(best, err)
+        print(i/100)
+    print(best)
+    print(best_Z)
 
 
 if __name__ == "__main__":
+    #Z = np.ones((8,8))
+    #Z = np.round(Z.astype(np.float32) * 2.0).astype(np.uint16)
     main()
+    #test_rand()
