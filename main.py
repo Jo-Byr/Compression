@@ -17,14 +17,14 @@ Z = np.array(
 )
 
 Z2 = np.array(
-    [[ 16,  12,  12,  18,  26,  40,  50,  56],
-     [ 11,  13,  19,  23,  31,  56,  61,  50],
-     [ 15,  16,  16,  26,  41,  53,  66,  59],
-     [ 17,  19,  19,  30,  46,  82,  84,  61],
-     [ 22,  24,  39,  53,  66, 109, 108,  75],
-     [ 22,  36,  53,  64,  80, 106, 112,  91],
-     [ 51,  64,  79,  87, 106, 120, 115,  97],
-     [ 75,  95,  94, 103, 115, 102, 102,  96]],
+    [[16,  12,  12,  18,  26,  40,  50,  56],
+     [11,  13,  19,  23,  31,  56,  61,  50],
+     [15,  16,  16,  26,  41,  53,  66,  59],
+     [17,  19,  19,  30,  46,  82,  84,  61],
+     [22,  24,  39,  53,  66, 109, 108,  75],
+     [22,  36,  53,  64,  80, 106, 112,  91],
+     [51,  64,  79,  87, 106, 120, 115,  97],
+     [75,  95,  94, 103, 115, 102, 102,  96]],
 )
 
 encode_diff = True
@@ -118,7 +118,11 @@ def calc_size(non_zero_val_matrix, non_zero_pos_matrix):
     non_zero_val_bits = []
     for non_zero_val_list in non_zero_val_matrix.flatten():
         if non_zero_val_list:
-            non_zero_val_bits.append(len(non_zero_val_list) * (1 + bits(max(np.abs(np.array(non_zero_val_list))))))
+            # 3 bits pour le nombre de bits par élement, ce qui permet un élement max de 2^(2^3) - 1 = 255 dans la
+            # matrice de DCT quantifiée
+            # 1 bit pour le signe et le nombre de bits nécessaire pour encoder la valeur maximale du bloc en valeur
+            # absolue
+            non_zero_val_bits.append(3 + len(non_zero_val_list) * (1 + bits(max(np.abs(np.array(non_zero_val_list))))))
 
     non_zero_pos_bits = []
     for non_zero_pos_list in non_zero_pos_matrix.flatten():
@@ -271,7 +275,9 @@ def main():
     plt.show()
 
     I_rec, taux_comp = compression(I)
-    #cv2.imwrite("res2.png", I_rec)
+    diff = np.abs(I_rec.astype(np.int16) - I.astype(np.int16)).astype(np.uint8)
+    cv2.imwrite("res.png", I_rec)
+    cv2.imwrite("diff.png", diff)
 
     print(f"RMSE : {RMSE(I, I_rec)}")
     print(f"Taux de compression : {taux_comp}")
@@ -284,13 +290,12 @@ def main():
     plt.imshow(I_rec, "gray")
     plt.title('Image reconstruite')
     plt.subplot(1,3,3)
-    diff = np.abs(I_rec.astype(np.int16) - I.astype(np.int16))
     plt.imshow(diff, "gray")
     plt.title('Différence')
     plt.show()
 
     cv2.imwrite("oreille.png", I[10:190, 170:300])
-    cv2.imwrite("oreille2.7.png", I_rec[10:190, 170:300])
+    cv2.imwrite("res_oreille.png", I_rec[10:190, 170:300])
 
 
 def test_rand():
@@ -320,6 +325,6 @@ def test_rand():
 
 
 if __name__ == "__main__":
-    z_fac = 1.7
+    z_fac = 2.14
     Z = np.round(Z.astype(np.float32) * z_fac).astype(np.uint16)
     main()
