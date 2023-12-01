@@ -56,7 +56,7 @@ def size_DWT(coeff_arr, coeff_slices):
     return tot_bits
 
 
-def compressed_block_bit_size(plage_encoded_coeff):
+def compressed_block_bit_size(plage_encoded_coeff, signed):
     """ Retourne le nombre de bits nécessaire pour encoder la liste de coefficients, encodés en plage, passée en
     argument """
     # Nb de bits nécessaire pour coder les tailles de plage
@@ -64,7 +64,9 @@ def compressed_block_bit_size(plage_encoded_coeff):
     # Liste des valeurs prises par la liste
     values = np.array([c[0] for c in plage_encoded_coeff])
     # Nb de bits nécessaire pour coder les valeurs de plage
-    val_bits = 1 + bits(np.max(np.abs(values)))  # +1 pour le signe
+    val_bits = bits(np.max(np.abs(values)))
+    if signed:
+        val_bits += 1  # +1 pour le signe
 
     overhead = 2 * 8  # Ajout de 2 octets pour passer les valeurs de size_bits et val_bits
     return overhead + len(plage_encoded_coeff) * (size_bits + val_bits)
@@ -76,13 +78,13 @@ def calc_taux_comp(compressed_coeff_arr, H, W):
 
     # Taille en bits du bloc principal
     C = compressed_coeff_arr[0]
-    total_size += compressed_block_bit_size(C)
+    total_size += compressed_block_bit_size(C, signed=False)  # Le bloc d'approximation n'a pas de valeurs négatives
 
     # Itération sur les levels
     for i in range(1, level + 1):
         for j in range(len(DCT_keys)):
             C = compressed_coeff_arr[i][j]
-            total_size += compressed_block_bit_size(C)
+            total_size += compressed_block_bit_size(C, signed=True)
 
     # Bits pour encoder delta:
     # 3 pour passer le nombre de bits sur lesquels les valeurs sont encodées
@@ -177,7 +179,7 @@ def decompression(compressed_coeff_arr, coeff_slices):
 def reconstruction(compressed_coeff_arr, coeff_slices_rec):
     coeff_arr_rec = decompression(compressed_coeff_arr, coeff_slices_rec)
 
-    r = 1.0  # A fixer pour minimiser la RMSE
+    r = 0.35  # A fixer pour minimiser la RMSE
 
     Q = coeff_arr_rec[coeff_slices_rec[0]]  # Matrice de coefficient à déquantifier
     coeff_arr_rec[coeff_slices_rec[0]] = (Q + r * np.sign(Q)) * delta[0]
@@ -214,7 +216,43 @@ def main():
 
     diff = np.abs(I_rec.astype(np.int16) - I.astype(np.int16)).astype(np.uint8)
 
-    plt.figure()
+    coeffs_DWT = pywt.wavedec2(I, onde, 'symmetric', level)
+    coeff_arr, coeff_slices = pywt.coeffs_to_array(coeffs_DWT)
+
+    plt.figure(1)
+    plt.subplot(1, 3, 1)
+    plt.imshow(I, 'gray')
+    plt.title('Image de base')
+    plt.subplot(1, 3, 2)
+    plt.imshow(coeff_arr, 'gray')
+    plt.title('Décomposition en ondelette')
+    plt.subplot(1, 3, 3)
+    plt.imshow(np.log(1 + np.abs(coeff_arr_q)), 'gray')
+    plt.title('Décomposition en ondelette quantifiée (log de v. abs)')
+
+    fig2 = plt.figure(2)
+    for i in range(1, level + 1):
+        echelle = coeffs_DWT[i][1] + coeffs_DWT[i][1] + coeffs_DWT[i][2]
+
+        hist, bins = np.histogram(echelle, bins=250)
+        ax = fig2.add_subplot(level, 1, i)
+        width = 0.7 * (bins[1] - bins[0])
+        center = (bins[:-1] + bins[1:]) / 2
+        ax.bar(center, hist, align='center', width=width)
+        plt.title(f'Histogramme de DWT - echelle {i}')
+
+    fig2 = plt.figure(3)
+    for i in range(1, level + 1):
+        echelle = coeff_arr_q[coeff_slices[i]['ad']] + coeff_arr_q[coeff_slices[i]['dd']] + coeff_arr_q[coeff_slices[i]['da']]
+
+        hist, bins = np.histogram(echelle, bins=100)
+        ax = fig2.add_subplot(level, 1, i)
+        width = 0.7 * (bins[1] - bins[0])
+        center = (bins[:-1] + bins[1:]) / 2
+        ax.bar(center, hist, align='center', width=width)
+        plt.title(f'Histogramme de DWT quantifiée - echelle {i}')
+
+    plt.figure(4)
 
     plt.subplot(1, 3, 1)
     plt.imshow(I, 'gray')
@@ -231,6 +269,11 @@ def main():
     print(f"RMSE : {RMSE(I, I_rec)}")
     print(f"Taux de compression : {taux_comp}")
 
+    cv2.imwrite("res_dwt.png", I_rec)
+    cv2.imwrite("diff_dwt.png", diff)
+    cv2.imwrite("oreille.png", I[10:190, 170:300])
+    cv2.imwrite("oreille_dwt.png", I_rec[10:190, 170:300])
+
     plt.show()
 
 
@@ -241,8 +284,6 @@ def test():
     coeff_slices_rec = reconstruct_coeff_slices(coeff_arr_q)  # Reconstruits pour signifier qu'on a pas besoin de les passer
     compressed_coeff_arr = compression(coeff_arr_q, coeff_slices_rec)
     I_rec = reconstruction(compressed_coeff_arr, coeff_slices_rec)
-
-    D = delta.copy()
 
     best_TC = calc_taux_comp(compressed_coeff_arr, H, W)
     best_RMSE = RMSE(I, I_rec)
@@ -270,15 +311,7 @@ def test():
 
 if __name__ == "__main__":
     onde = "haar"
-    """
-    delta = {
-        0: 3,
-        1: 28,
-        2: 60,
-        3: 180
-    }
-    """
-    delta = {0: 4.14, 1: 35.72, 2: 47.19, 3: 108.03}
+    delta = {0: 14, 1: 31, 2: 49, 3: 61}
     level = len(delta) - 1
-    test()
+    #test()
     main()
