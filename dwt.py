@@ -44,11 +44,11 @@ def main():
             C = coeff_arr_q[coeff_slices_q[i][key]]  # Matrice de coefficient à quantifier
             coeff_arr_q[coeff_slices_q[i][key]] = np.sign(C) * np.fix(np.abs(C) / delta[i])
 
-    r = 0.5  # A fixer pour minimiser la RMSE
-
     # Dequantification
     coeff_arr_rec = coeff_arr_q.copy()
     coeff_slices_rec = reconstruct_coeff_slices(coeff_arr_rec)
+
+    r = 0.5  # A fixer pour minimiser la RMSE
 
     Q = coeff_arr_rec[coeff_slices_rec[0]]  # Matrice de coefficient à déquantifier
     coeff_arr_rec[coeff_slices_rec[0]] = (Q + r * np.sign(Q)) * delta[0]
@@ -56,7 +56,7 @@ def main():
     for i in range(1, level + 1):
         for key in ['ad', 'dd', 'da']:
             Q = coeff_arr_rec[coeff_slices_rec[i][key]]  # Matrice de coefficient à déquantifier
-            coeff_arr_rec[coeff_slices_rec[i][key]] = (Q + r * np.sign(Q)) * delta[0]
+            coeff_arr_rec[coeff_slices_rec[i][key]] = (Q + r * np.sign(Q)) * delta[i]
 
     # Reconstruction
     coeffs_rec = pywt.array_to_coeffs(coeff_arr_rec, coeff_slices_rec)
@@ -91,11 +91,11 @@ def main():
 
 if __name__ == "__main__":
     onde = "haar"
-    level = 2
     delta = {
         0: 1,
-        1: 2,
-        2: 2
+        1: 5,
+        2: 10,
+        3: 100
     }
-    assert len(delta) == level + 1
+    level = len(delta) - 1
     main()
