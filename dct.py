@@ -277,8 +277,6 @@ def main():
     plt.hist(I.ravel(), 256, [0, 256])
     plt.title('Histogramme de distribution des intensités')
 
-    plt.show()
-
     DCT = cv2.dct(I.astype(np.float32))
     DCTlog = np.log(np.abs(DCT))
     DCT_autocorr = np.corrcoef(DCT)
@@ -301,12 +299,10 @@ def main():
     plt.hist(DCT.ravel(), bins=500, range=[-200, 200])
     plt.title('Histogramme de distribution des intensités')
 
-    plt.show()
-
     I_rec, taux_comp = compression(I)
     diff = np.abs(I_rec.astype(np.int16) - I.astype(np.int16)).astype(np.uint8)
-    cv2.imwrite("res.png", I_rec)
-    cv2.imwrite("diff.png", diff)
+    cv2.imwrite("res_dct.png", I_rec)
+    cv2.imwrite("diff_dct.png", diff)
 
     print(f"RMSE : {RMSE(I, I_rec)}")
     print(f"Taux de compression : {taux_comp}")
@@ -324,7 +320,7 @@ def main():
     plt.show()
 
     cv2.imwrite("oreille.png", I[10:190, 170:300])
-    cv2.imwrite("res_oreille.png", I_rec[10:190, 170:300])
+    cv2.imwrite("oreille_dct.png", I_rec[10:190, 170:300])
 
 
 def test_rand():
@@ -360,9 +356,9 @@ if __name__ == "__main__":
     Encodage prédictif et Z de base : 2.14
     Pas d'encodage prédictif et Z2 : 2.79
     Encodage prédictif et Z2 : 1.91 """
-    use_Z2 = True  # Utilisation de la matrice modifiée Z2 plutôt que de la version JPEG Z
+    use_Z2 = False  # Utilisation de la matrice modifiée Z2 plutôt que de la version JPEG Z
     encode_diff = True  # Utilisation de l'encodage prédictif
-    z_fac = 1.91  # Facteur de multiplication de la matrice Z
+    z_fac = 2.14  # Facteur de multiplication de la matrice Z
     if use_Z2:
         Z = Z2
     Z = np.round(Z.astype(np.float32) * z_fac).astype(np.uint16)
